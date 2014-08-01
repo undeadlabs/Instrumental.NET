@@ -17,7 +17,7 @@ using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Net.Sockets;
 using System.Threading;
-using Common.Logging;
+using NLog;
 
 namespace Instrumental.NET
 {
@@ -28,54 +28,46 @@ namespace Instrumental.NET
         private const int MaxReconnectDelay = 15;
 
         private readonly string _apiKey;
-        private readonly BlockingCollection<Tuple<String, AutoResetEvent>> _messages = new BlockingCollection<Tuple<String, AutoResetEvent>>();
-        private Tuple<String, AutoResetEvent> _currentCommand;
+        private readonly BlockingCollection<String> _messages = new BlockingCollection<String>();
+        private String _currentCommand;
         private Thread _worker;
         private bool _queueFullWarned;
-        private static readonly ILog _log = LogManager.GetCurrentClassLogger();
+        private static readonly Logger _log = LogManager.GetCurrentClassLogger();
 
         public Collector(String apiKey)
         {
             _apiKey = apiKey;
+            _worker = new Thread(WorkerLoop) {IsBackground = true};
+            _worker.Start();
         }
 
         public void SendMessage(String message, bool synchronous)
         {
-            if (_worker == null) StartBackgroundWorker();
+            // Make sure the message is terminated with "\n" and includes no other "\r\n" characters
+            if (message.IndexOf("\r") != -1 || message.IndexOf("\n") != message.Length - 1)
+                throw new InstrumentalException("Invalid message, {0}", message);
 
-            if (_messages.Count < MaxBuffer)
+            if (synchronous)
             {
-                _queueFullWarned = false;
-                _log.DebugFormat("Queueing message: {0}", message);
-                QueueMessage(message, synchronous);
+                // Blocks if queue full
+                _messages.Add(message);
+            }
+            else if (_messages.TryAdd(message))
+            {
+                if (_queueFullWarned)
+                {
+                    _queueFullWarned = false;
+                    _log.Info("Queue available again");
+                }
             }
             else
             {
                 if (!_queueFullWarned)
                 {
                     _queueFullWarned = true;
-                    _log.Warn("Queue full. Dropping messages until there's room.");
+                    _log.Warn("Queue full; dropping messages until there's room");
                 }
-                _log.DebugFormat(String.Format("Dropping message: {0}", message));
             }
-        }
-
-        private void QueueMessage(string message, bool synchronous)
-        {
-            if(!synchronous)
-                _messages.Add(new Tuple<string, AutoResetEvent>(message, null));
-            else
-            {
-                var handle = new AutoResetEvent(false);
-                _messages.Add(new Tuple<string, AutoResetEvent>(message, handle));
-                handle.WaitOne();
-            }
-        }
-
-        private void StartBackgroundWorker()
-        {
-            _worker = new Thread(WorkerLoop) {IsBackground = true};
-            _worker.Start();
         }
 
         private void WorkerLoop()
@@ -101,7 +93,7 @@ namespace Instrumental.NET
                         socket = null;
                     }
                     var delay = (int) Math.Min(MaxReconnectDelay, Math.Pow(failures++, Backoff));
-                    _log.ErrorFormat("Disconnected. {0} failures in a row. Reconnect in {1} seconds.", failures, delay);
+                    _log.Error("Disconnected. {0} failures in a row. Reconnect in {1} seconds.", failures, delay);
                     Thread.Sleep(delay*1000);
                 }
             }
@@ -112,34 +104,29 @@ namespace Instrumental.NET
             while (true)
             {
                 if (_currentCommand == null) _currentCommand = _messages.Take();
-                var message = _currentCommand.Item1;
-                var syncHandle = _currentCommand.Item2;
 
-                if(socket.Poll(1, SelectMode.SelectRead) && socket.Available == 0)
-                    throw new Exception("Disconnected");
+                // if (socket.Poll(1, SelectMode.SelectRead) && socket.Available == 0)
+                //    throw new Exception("Disconnected");
 
-                _log.DebugFormat("Sending: {0}", message);
-                var data = System.Text.Encoding.ASCII.GetBytes(message + "\n");
+                var data = System.Text.Encoding.ASCII.GetBytes(_currentCommand);
                 socket.Send(data);
-                if (syncHandle != null) syncHandle.Set();
                 _currentCommand = null;
             }
         }
 
         private void Authenticate(Socket socket)
         {
-            var data = System.Text.Encoding.ASCII.GetBytes("hello version 1.0\n");
-            socket.Send(data);
-            data = System.Text.Encoding.ASCII.GetBytes(String.Format("authenticate {0}\n", _apiKey));
+            var data = System.Text.Encoding.ASCII.GetBytes(String.Format(
+                "hello version 1.0\nauthenticate {0}\n",
+                _apiKey
+            ));
             socket.Send(data);
         }
 
         private static Socket Connect()
         {
             var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            _log.Info("Connecting to collector.");
             socket.Connect("collector.instrumentalapp.com", 8000);
-            _log.Info("Connected to collector.");
             return socket;
         }
     }
