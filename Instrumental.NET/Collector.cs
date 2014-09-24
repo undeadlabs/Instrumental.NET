@@ -86,7 +86,7 @@ namespace Instrumental.NET
                 }
                 catch (Exception e)
                 {
-                    _log.Error("An exception occurred", e);
+                    _log.Error("Exception, {0}", e.Message);
                     if (socket != null)
                     {
                         socket.Disconnect(false);
