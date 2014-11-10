@@ -73,13 +73,24 @@ namespace Instrumental.NET {
                     SendQueuedMessages(socket);
                 }
                 catch (Exception e) {
-                    _log.Error("Exception, {0}", e.Message);
                     if (socket != null) {
                         socket.Disconnect(false);
                         socket = null;
                     }
+
                     var delay = (int)Math.Min(MaxReconnectDelay, Math.Pow(failures++, Backoff));
-                    _log.Error("Disconnected. {0} failures in a row. Reconnect in {1} seconds.", failures, delay);
+
+                    // Only log at the ERROR level once so the logs aren't filled with warnings
+                    // when the instrumental service goes down
+                    LogLevel level;
+                    if (failures < 3)
+                        level = LogLevel.Info;
+                    else if (failures == 3)
+                        level = LogLevel.Error;
+                    else
+                        level = LogLevel.Warn;
+                    _log.Log(level, "Disconnected. {0} failures in a row. EXCEPTION {1}", failures, e.Message);
+
                     Thread.Sleep(delay * 1000);
                 }
             }
