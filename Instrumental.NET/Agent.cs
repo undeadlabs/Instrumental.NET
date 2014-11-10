@@ -38,7 +38,14 @@ namespace Instrumental.NET
             _collector.SendMessage(String.Format("gauge {0} {1} {2}\n", metricName, value, t.ToEpoch()), Synchronous);
        }
 
-        public void Time(String metricName, Action action, float durationMultiplier = 1)
+        public void GaugeAbsolute (String metricName, float value, DateTime? time = null) {
+            if (_collector == null) return;
+            ValidateMetricName(metricName);
+            var t = time == null ? DateTime.Now : (DateTime)time;
+            _collector.SendMessage(String.Format("gauge_absolute {0} {1} {2}\n", metricName, value, t.ToEpoch()), Synchronous);
+        }
+
+        public void Time (String metricName, Action action, float durationMultiplier = 1)
         {
             var start = DateTime.Now;
             try
