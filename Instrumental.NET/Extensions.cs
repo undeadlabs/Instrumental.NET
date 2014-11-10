@@ -14,14 +14,11 @@
 
 using System;
 
-namespace Instrumental.NET
-{
-    public static class Extensions
-    {
+namespace Instrumental.NET {
+    public static class Extensions {
         private static readonly DateTime EpochStart = new DateTime(1970, 1, 1);
 
-        public static int ToEpoch(this DateTime dt)
-        {
+        public static int ToEpoch (this DateTime dt) {
             var t = dt.ToUniversalTime() - EpochStart;
             return (int)t.TotalSeconds;
         }

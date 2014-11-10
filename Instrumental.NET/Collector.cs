@@ -19,10 +19,8 @@ using System.Net.Sockets;
 using System.Threading;
 using NLog;
 
-namespace Instrumental.NET
-{
-    class Collector
-    {
+namespace Instrumental.NET {
+    class Collector {
         private const int MaxBuffer = 5000;
         private const int Backoff = 2;
         private const int MaxReconnectDelay = 15;
@@ -34,75 +32,61 @@ namespace Instrumental.NET
         private bool _queueFullWarned;
         private static readonly Logger _log = LogManager.GetCurrentClassLogger();
 
-        public Collector(String apiKey)
-        {
+        public Collector (String apiKey) {
             _apiKey = apiKey;
-            _worker = new Thread(WorkerLoop) {IsBackground = true};
+            _worker = new Thread(WorkerLoop) { IsBackground = true };
             _worker.Start();
         }
 
-        public void SendMessage(String message, bool synchronous)
-        {
+        public void SendMessage (String message, bool synchronous) {
             // Make sure the message is terminated with "\n" and includes no other "\r\n" characters
             if (message.IndexOf("\r") != -1 || message.IndexOf("\n") != message.Length - 1)
                 throw new InstrumentalException("Invalid message, {0}", message);
 
-            if (synchronous)
-            {
+            if (synchronous) {
                 // Blocks if queue full
                 _messages.Add(message);
             }
-            else if (_messages.TryAdd(message))
-            {
-                if (_queueFullWarned)
-                {
+            else if (_messages.TryAdd(message)) {
+                if (_queueFullWarned) {
                     _queueFullWarned = false;
                     _log.Info("Queue available again");
                 }
             }
-            else
-            {
-                if (!_queueFullWarned)
-                {
+            else {
+                if (!_queueFullWarned) {
                     _queueFullWarned = true;
                     _log.Warn("Queue full; dropping messages until there's room");
                 }
             }
         }
 
-        private void WorkerLoop()
-        {
-            while (true)
-            {
+        private void WorkerLoop () {
+            while (true) {
                 Socket socket = null;
                 var failures = 0;
 
-                try
-                {
+                try {
                     socket = Connect();
                     Authenticate(socket);
                     failures = 0;
                     SendQueuedMessages(socket);
                 }
-                catch (Exception e)
-                {
+                catch (Exception e) {
                     _log.Error("Exception, {0}", e.Message);
-                    if (socket != null)
-                    {
+                    if (socket != null) {
                         socket.Disconnect(false);
                         socket = null;
                     }
-                    var delay = (int) Math.Min(MaxReconnectDelay, Math.Pow(failures++, Backoff));
+                    var delay = (int)Math.Min(MaxReconnectDelay, Math.Pow(failures++, Backoff));
                     _log.Error("Disconnected. {0} failures in a row. Reconnect in {1} seconds.", failures, delay);
-                    Thread.Sleep(delay*1000);
+                    Thread.Sleep(delay * 1000);
                 }
             }
         }
 
-        private void SendQueuedMessages(Socket socket)
-        {
-            while (true)
-            {
+        private void SendQueuedMessages (Socket socket) {
+            while (true) {
                 if (_currentCommand == null) _currentCommand = _messages.Take();
 
                 // if (socket.Poll(1, SelectMode.SelectRead) && socket.Available == 0)
@@ -114,8 +98,7 @@ namespace Instrumental.NET
             }
         }
 
-        private void Authenticate(Socket socket)
-        {
+        private void Authenticate (Socket socket) {
             var data = System.Text.Encoding.ASCII.GetBytes(String.Format(
                 "hello version 1.0\nauthenticate {0}\n",
                 _apiKey
@@ -123,8 +106,7 @@ namespace Instrumental.NET
             socket.Send(data);
         }
 
-        private static Socket Connect()
-        {
+        private static Socket Connect () {
             var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             socket.Connect("collector.instrumentalapp.com", 8000);
             return socket;
