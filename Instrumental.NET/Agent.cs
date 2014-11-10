@@ -20,25 +20,30 @@ namespace Instrumental.NET {
         public bool Synchronous { get; set; }
 
         private readonly Collector _collector;
+        private readonly string _prefix;
 
-        public Agent (String apiKey) {
+        public Agent (String apiKey, string prefix = null) {
             Synchronous = false;
             if (!string.IsNullOrEmpty(apiKey))
                 _collector = new Collector(apiKey);
+
+            if (!string.IsNullOrEmpty(prefix))
+                ValidateMetricName(prefix + "fake");
+            _prefix = prefix ?? "";
         }
 
         public void Gauge (String metricName, float value, DateTime? time = null) {
-            if (_collector == null) return;
             ValidateMetricName(metricName);
+            if (_collector == null) return;
             var t = time == null ? DateTime.Now : (DateTime)time;
-            _collector.SendMessage(String.Format("gauge {0} {1} {2}\n", metricName, value, t.ToEpoch()), Synchronous);
+            _collector.SendMessage(String.Format("gauge {0}{1} {2} {3}\n", _prefix, metricName, value, t.ToEpoch()), Synchronous);
         }
 
         public void GaugeAbsolute (String metricName, float value, DateTime? time = null) {
-            if (_collector == null) return;
             ValidateMetricName(metricName);
+            if (_collector == null) return;
             var t = time == null ? DateTime.Now : (DateTime)time;
-            _collector.SendMessage(String.Format("gauge_absolute {0} {1} {2}\n", metricName, value, t.ToEpoch()), Synchronous);
+            _collector.SendMessage(String.Format("gauge_absolute {0}{1} {2} {3}\n", _prefix, metricName, value, t.ToEpoch()), Synchronous);
         }
 
         public void Time (String metricName, Action action, float durationMultiplier = 1) {
@@ -58,15 +63,21 @@ namespace Instrumental.NET {
         }
 
         public void Increment (String metricName, float value = 1, DateTime? time = null) {
-            if (_collector == null) return;
             ValidateMetricName(metricName);
+            if (_collector == null) return;
             var t = time == null ? DateTime.Now : (DateTime)time;
-            _collector.SendMessage(String.Format("increment {0} {1} {2}\n", metricName, value, t.ToEpoch()), Synchronous);
+            _collector.SendMessage(String.Format("increment {0}{1} {2} {3}\n", _prefix, metricName, value, t.ToEpoch()), Synchronous);
         }
 
+        /// <summary>
+        /// Record a notice, which DOES NOT include the Agent prefix string set upon initialization
+        /// </summary>
+        /// <param name="message">A string describing the event</param>
+        /// <param name="duration">The duration of the event. You may specify 0 for events which have no specific duration.</param>
+        /// <param name="time">The time when the event occurred</param>
         public void Notice (String message, float duration = 0, DateTime? time = null) {
-            if (_collector == null) return;
             ValidateNote(message);
+            if (_collector == null) return;
             var t = time == null ? DateTime.Now : (DateTime)time;
             _collector.SendMessage(String.Format("notice {0} {1} {2}\n", t.ToEpoch(), duration, message), Synchronous);
         }
