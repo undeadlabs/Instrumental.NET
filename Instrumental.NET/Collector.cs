@@ -82,14 +82,16 @@ namespace Instrumental.NET {
 
                     // Only log at the ERROR level once so the logs aren't filled with warnings
                     // when the instrumental service goes down
-                    LogLevel level;
-                    if (failures < 3)
-                        level = LogLevel.Info;
-                    else if (failures == 3)
-                        level = LogLevel.Error;
-                    else
-                        level = LogLevel.Warn;
-                    _log.Log(level, "Disconnected. {0} failures in a row. EXCEPTION {1}", failures, e.Message);
+                    if (failures > 1) {
+                        LogLevel level;
+                        if (failures < 3)
+                            level = LogLevel.Info;
+                        else if (failures == 3)
+                            level = LogLevel.Error;
+                        else
+                            level = LogLevel.Warn;
+                        _log.Log(level, "{0} [{1} failures in a row]", e.Message, failures);
+                    }
 
                     Thread.Sleep(delay * 1000);
                 }
