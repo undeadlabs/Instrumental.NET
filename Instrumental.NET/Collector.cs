@@ -48,7 +48,7 @@ namespace Instrumental.NET {
                 _messages.Add(message);
             }
             else if (_messages.TryAdd(message)) {
-                if (_queueFullWarned) {
+                if (_queueFullWarned && _messages.Count < MaxBuffer / 2) {
                     _queueFullWarned = false;
                     _log.Info("Queue available again");
                 }
