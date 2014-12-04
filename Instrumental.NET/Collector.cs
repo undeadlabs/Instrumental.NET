@@ -21,15 +21,16 @@ using NLog;
 
 namespace Instrumental.NET {
     class Collector {
-        private const int MaxBuffer = 5000;
+        private const int ApproximateMaxMessages = 2000;
         private const int Backoff = 2;
         private const int MaxReconnectDelay = 15;
 
         private readonly string _apiKey;
-        private readonly BlockingCollection<String> _messages = new BlockingCollection<String>();
+        private readonly AutoResetEvent _event = new AutoResetEvent(false);
+        private readonly ConcurrentQueue<String> _messages = new ConcurrentQueue<String>();
         private String _currentCommand;
         private Thread _worker;
-        private bool _queueFullWarned;
+        private int _queueFullWarned;
         private static readonly Logger _log = LogManager.GetCurrentClassLogger();
 
         public Collector (String apiKey) {
@@ -38,26 +39,22 @@ namespace Instrumental.NET {
             _worker.Start();
         }
 
-        public void SendMessage (String message, bool synchronous) {
+        public void SendMessage (String message) {
             // Make sure the message is terminated with "\n" and includes no other "\r\n" characters
             if (message.IndexOf("\r") != -1 || message.IndexOf("\n") != message.Length - 1)
                 throw new InstrumentalException("Invalid message, {0}", message);
 
-            if (synchronous) {
-                // Blocks if queue full
-                _messages.Add(message);
-            }
-            else if (_messages.TryAdd(message)) {
-                if (_queueFullWarned && _messages.Count < MaxBuffer / 2) {
-                    _queueFullWarned = false;
-                    _log.Info("Queue available again");
+            if (_messages.Count <= ApproximateMaxMessages) {
+                _messages.Enqueue(message);
+                _event.Set();
+                if (_queueFullWarned != 0 && _messages.Count < ApproximateMaxMessages / 2) {
+                    if (0 != Interlocked.Exchange(ref _queueFullWarned, 0))
+                        _log.Info("Queue available again {0}", _messages.Count);
                 }
             }
             else {
-                if (!_queueFullWarned) {
-                    _queueFullWarned = true;
+                if (0 == Interlocked.Exchange(ref _queueFullWarned, 1))
                     _log.Warn("Queue full; dropping messages until there's room");
-                }
             }
         }
 
@@ -82,16 +79,14 @@ namespace Instrumental.NET {
 
                     // Only log at the ERROR level once so the logs aren't filled with warnings
                     // when the instrumental service goes down
-                    if (failures > 1) {
-                        LogLevel level;
-                        if (failures < 3)
-                            level = LogLevel.Info;
-                        else if (failures == 3)
-                            level = LogLevel.Error;
-                        else
-                            level = LogLevel.Warn;
-                        _log.Log(level, "{0} [{1} failures in a row]", e.Message, failures);
-                    }
+                    LogLevel level;
+                    if (failures < 3)
+                        level = LogLevel.Debug;
+                    else if (failures == 3)
+                        level = LogLevel.Error;
+                    else
+                        level = LogLevel.Warn;
+                    _log.Log(level, "{0} [{1} failures in a row] [Count {2}]", e.Message, failures, _messages.Count);
 
                     Thread.Sleep(delay * 1000);
                 }
@@ -100,10 +95,15 @@ namespace Instrumental.NET {
 
         private void SendQueuedMessages (Socket socket) {
             while (true) {
-                if (_currentCommand == null) _currentCommand = _messages.Take();
+                if (_currentCommand == null) {
+                    if (!_messages.TryDequeue(out _currentCommand)) {
+                        _event.WaitOne();
+                        continue;
+                    }
+                }
 
-                // if (socket.Poll(1, SelectMode.SelectRead) && socket.Available == 0)
-                //    throw new Exception("Disconnected");
+                if (socket.Poll(1, SelectMode.SelectRead) && socket.Available == 0)
+                    throw new Exception("Disconnected");
 
                 var data = System.Text.Encoding.ASCII.GetBytes(_currentCommand);
                 socket.Send(data);

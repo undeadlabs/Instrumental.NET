@@ -17,13 +17,10 @@ using System.Text.RegularExpressions;
 
 namespace Instrumental.NET {
     public class Agent {
-        public bool Synchronous { get; set; }
-
         private readonly Collector _collector;
         private readonly string _prefix;
 
         public Agent (String apiKey, string prefix = null) {
-            Synchronous = false;
             if (!string.IsNullOrEmpty(apiKey))
                 _collector = new Collector(apiKey);
 
@@ -32,41 +29,22 @@ namespace Instrumental.NET {
             _prefix = prefix ?? "";
         }
 
-        public void Gauge (String metricName, float value, DateTime? time = null) {
+        public void Gauge (String metricName, float value) {
             ValidateMetricName(metricName);
             if (_collector == null) return;
-            var t = time == null ? DateTime.Now : (DateTime)time;
-            _collector.SendMessage(String.Format("gauge {0}{1} {2} {3}\n", _prefix, metricName, value, t.ToEpoch()), Synchronous);
+            _collector.SendMessage(String.Format("gauge {0}{1} {2} {3}\n", _prefix, metricName, value, DateTime.Now.ToEpoch()));
         }
 
-        public void GaugeAbsolute (String metricName, float value, DateTime? time = null) {
+        public void GaugeAbsolute (String metricName, float value) {
             ValidateMetricName(metricName);
             if (_collector == null) return;
-            var t = time == null ? DateTime.Now : (DateTime)time;
-            _collector.SendMessage(String.Format("gauge_absolute {0}{1} {2} {3}\n", _prefix, metricName, value, t.ToEpoch()), Synchronous);
+            _collector.SendMessage(String.Format("gauge_absolute {0}{1} {2} {3}\n", _prefix, metricName, value, DateTime.Now.ToEpoch()));
         }
 
-        public void Time (String metricName, Action action, float durationMultiplier = 1) {
-            var start = DateTime.Now;
-            try {
-                action();
-            }
-            finally {
-                var end = DateTime.Now;
-                var duration = end - start;
-                Gauge(metricName, (float)duration.TotalSeconds * durationMultiplier);
-            }
-        }
-
-        public void TimeMs (String metricName, Action action) {
-            Time(metricName, action, 1000);
-        }
-
-        public void Increment (String metricName, float value = 1, DateTime? time = null) {
+        public void Increment (String metricName, float value = 1) {
             ValidateMetricName(metricName);
             if (_collector == null) return;
-            var t = time == null ? DateTime.Now : (DateTime)time;
-            _collector.SendMessage(String.Format("increment {0}{1} {2} {3}\n", _prefix, metricName, value, t.ToEpoch()), Synchronous);
+            _collector.SendMessage(String.Format("increment {0}{1} {2} {3}\n", _prefix, metricName, value, DateTime.Now.ToEpoch()));
         }
 
         /// <summary>
@@ -75,11 +53,10 @@ namespace Instrumental.NET {
         /// <param name="message">A string describing the event</param>
         /// <param name="duration">The duration of the event. You may specify 0 for events which have no specific duration.</param>
         /// <param name="time">The time when the event occurred</param>
-        public void Notice (String message, float duration = 0, DateTime? time = null) {
+        public void Notice (String message, float duration = 0) {
             ValidateNote(message);
             if (_collector == null) return;
-            var t = time == null ? DateTime.Now : (DateTime)time;
-            _collector.SendMessage(String.Format("notice {0} {1} {2}\n", t.ToEpoch(), duration, message), Synchronous);
+            _collector.SendMessage(String.Format("notice {0} {1} {2}\n", DateTime.Now.ToEpoch(), duration, message));
         }
 
         private static void ValidateNote (String message) {
