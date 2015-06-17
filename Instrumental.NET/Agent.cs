@@ -19,8 +19,14 @@ namespace Instrumental.NET {
     public class Agent {
         private readonly Collector _collector;
         private readonly string _prefix;
+        private readonly Regex _validateMetric;
 
         public Agent (String apiKey, string prefix = null) {
+            _validateMetric = new Regex(
+                @"^[\d\w\-_]+(\.[\d\w\-_]+)+$",
+                RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.ExplicitCapture
+            );
+
             if (!string.IsNullOrEmpty(apiKey))
                 _collector = new Collector(apiKey);
 
@@ -66,8 +72,7 @@ namespace Instrumental.NET {
         }
 
         private void ValidateMetricName (String metricName) {
-            var validMetric = Regex.IsMatch(metricName, @"^[\d\w\-_]+(\.[\d\w\-_]+)+$", RegexOptions.IgnoreCase);
-            if (!validMetric)
+            if (!_validateMetric.IsMatch(metricName))
                 throw new InstrumentalException("Invalid metric name: {0}", metricName);
         }
     }
