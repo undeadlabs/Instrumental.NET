@@ -107,13 +107,30 @@ namespace Instrumental.NET {
                     }
                 }
 
-                if (socket.Poll(1, SelectMode.SelectRead) && socket.Available == 0)
+                if (IsSocketDisconnected(socket))
                     throw new Exception("Disconnected");
 
                 var data = System.Text.Encoding.ASCII.GetBytes(_currentCommand);
                 socket.Send(data);
                 _currentCommand = null;
             }
+        }
+
+        private static bool IsSocketDisconnected (Socket socket) {
+           // Is there any data available?
+            byte[] buffer = null;
+            while (socket.Poll(1, SelectMode.SelectRead)) {
+                // If no data is available then socket disconnected
+                if (socket.Available == 0)
+                    return true;
+
+                // Clear socket data; we don't care what InstrumentApp sends
+                buffer = buffer ?? new byte[Math.Min(1024, socket.Available)];
+                do {
+                    socket.Receive(buffer);
+                } while (socket.Available != 0);
+            }
+            return false;
         }
 
         private void Authenticate (Socket socket) {
