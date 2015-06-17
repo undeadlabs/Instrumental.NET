@@ -41,8 +41,10 @@ namespace Instrumental.NET {
 
         public void SendMessage (String message) {
             // Make sure the message is terminated with "\n" and includes no other "\r\n" characters
+#if DEBUG
             if (message.IndexOf("\r") != -1 || message.IndexOf("\n") != message.Length - 1)
                 throw new InstrumentalException("Invalid message, {0}", message);
+#endif
 
             if (_messages.Count <= ApproximateMaxMessages) {
                 _messages.Enqueue(message);
