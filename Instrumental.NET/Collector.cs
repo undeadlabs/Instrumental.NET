@@ -71,7 +71,10 @@ namespace Instrumental.NET {
                 }
                 catch (Exception e) {
                     if (socket != null) {
-                        socket.Disconnect(false);
+                        try {
+                            socket.Disconnect(false);
+                        }
+                        catch { }
                         socket = null;
                     }
 
